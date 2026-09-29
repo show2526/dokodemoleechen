@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>角色相機</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #0D0E12;
+    --panel: rgba(20,21,26,0.62);
+    --panel-solid: #17181D;
+    --ink: #F4F1EA;
+    --ink-dim: rgba(244,241,234,0.62);
+    --accent: #FFC845;
+    --accent-ink: #2A1D00;
+    --ring: #4FD1C5;
+    --danger: #FF5D73;
+    --hairline: rgba(244,241,234,0.14);
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){
+      --panel: rgba(255,255,255,0.66);
+      --panel-solid: #F4F1EA;
+      --ink: #17181D;
+      --ink-dim: rgba(23,24,29,0.62);
+      --hairline: rgba(23,24,29,0.14);
+    }
+  }
+  :root[data-theme="dark"]{
+    --panel: rgba(20,21,26,0.62);
+    --panel-solid: #17181D;
+    --ink: #F4F1EA;
+    --ink-dim: rgba(244,241,234,0.62);
+    --hairline: rgba(244,241,234,0.14);
+  }
+
+  *{box-sizing:border-box; -webkit-tap-highlight-color: transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+    overscroll-behavior:none;
+    overflow:hidden;
+  }
+  .display-font{ font-family:"Baloo 2","Noto Sans TC",sans-serif; }
+
+  #app{
+    position:fixed; inset:0;
+    display:flex; flex-direction:column;
+  }
+
+  /* ---------- Gate screen ---------- */
+  #gate{
+    position:absolute; inset:0; z-index:50;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:18px; padding:32px;
+    background: radial-gradient(120% 120% at 50% 0%, #1c1e26 0%, var(--bg) 60%);
+    text-align:center;
+  }
+  #gate .emoji{ font-size:56px; line-height:1; filter: drop-shadow(0 6px 18px rgba(0,0,0,.35)); }
+  #gate h1{ margin:0; font-size:26px; letter-spacing:.2px; }
+  #gate p{ margin:0; max-width:320px; color: var(--ink-dim); font-size:14px; line-height:1.6; }
+  #gate button{
+    margin-top:8px;
+    border:none; cursor:pointer;
+    background: var(--accent); color: var(--accent-ink);
+    font-weight:700; font-size:16px;
+    padding:14px 30px; border-radius:999px;
+    font-family:"Baloo 2",sans-serif;
+    box-shadow: 0 8px 24px rgba(255,200,69,0.25);
+  }
+  #gate .err{ color: var(--danger); font-size:13px; max-width:300px; }
+  #gate.hidden{ display:none; }
+
+  /* ---------- Stage ---------- */
+  #stage{
+    position:relative; flex:1; overflow:hidden; background:#000;
+    touch-action:none;
+  }
+  #camera{
+    position:absolute; inset:0;
+    width:100%; height:100%;
+    object-fit:cover;
+    background:#000;
+  }
+  #stickerLayer{
+    position:absolute; inset:0;
+    overflow:hidden;
+  }
+  .sticker{
+    position:absolute; left:0; top:0;
+    touch-action:none;
+    display:flex; align-items:center; justify-content:center;
+    filter: drop-shadow(0 6px 14px rgba(0,0,0,.35));
+  }
+  .sticker img{ width:100%; height:100%; object-fit:contain; pointer-events:none; user-select:none; -webkit-user-drag:none; }
+  .sticker .ring{
+    position:absolute; inset:-6px;
+    border:2px dashed var(--ring);
+    border-radius:16px;
+    opacity:0; pointer-events:none;
+    transition: opacity .12s ease;
+  }
+  .sticker.selected .ring{ opacity:1; }
+  .handle{
+    position:absolute;
+    width:30px; height:30px;
+    border-radius:999px;
+    display:flex; align-items:center; justify-content:center;
+    font-size:14px;
+    opacity:0; transform:scale(.6);
+    transition: opacity .12s ease, transform .12s ease;
+    pointer-events:none;
+  }
+  .sticker.selected .handle{ opacity:1; transform:scale(1); pointer-events:auto; }
+  .handle-delete{
+    top:-14px; right:-14px;
+    background: var(--danger); color:#fff;
+  }
+  .handle-resize{
+    bottom:-14px; right:-14px;
+    background: var(--ring); color:#08201d;
+    cursor: nwse-resize;
+  }
+
+  /* ---------- Top bar ---------- */
+  #topBar{
+    position:absolute; top:0; left:0; right:0; z-index:20;
+    display:flex; justify-content:space-between; align-items:center;
+    padding: max(14px, env(safe-area-inset-top)) 14px 10px;
+    background: linear-gradient(to bottom, rgba(0,0,0,.45), rgba(0,0,0,0));
+  }
+  .iconbtn{
+    width:42px; height:42px; border-radius:999px;
+    background: var(--panel); backdrop-filter: blur(10px);
+    border:1px solid var(--hairline);
+    display:flex; align-items:center; justify-content:center;
+    font-size:18px; color:var(--ink);
+    cursor:pointer;
+  }
+  .iconbtn:active{ transform: scale(.92); }
+  #topBar .left, #topBar .right{ display:flex; gap:10px; }
+
+  /* ---------- Tray ---------- */
+  #trayWrap{
+    position:absolute; left:0; right:0; bottom: calc(108px + env(safe-area-inset-bottom));
+    z-index:20;
+    display:flex; justify-content:center;
+  }
+  #tray{
+    display:flex; gap:10px; padding:10px 12px;
+    background: var(--panel); backdrop-filter: blur(14px);
+    border:1px solid var(--hairline);
+    border-radius:20px;
+    overflow-x:auto; max-width: calc(100vw - 24px);
+    scrollbar-width:none;
+  }
+  #tray::-webkit-scrollbar{ display:none; }
+  .traybtn{
+    flex:0 0 auto;
+    width:56px; height:56px; border-radius:14px;
+    background: var(--panel-solid);
+    border:1px solid var(--hairline);
+    display:flex; align-items:center; justify-content:center;
+    overflow:hidden; cursor:pointer;
+    position:relative;
+  }
+  .traybtn img{ width:78%; height:78%; object-fit:contain; }
+  .traybtn:active{ transform: scale(.94); }
+  .traybtn.add{ font-size:22px; color:var(--ink-dim); }
+
+  /* ---------- Bottom controls ---------- */
+  #bottomBar{
+    position:absolute; left:0; right:0; bottom:0; z-index:20;
+    padding: 14px 24px calc(20px + env(safe-area-inset-bottom));
+    display:flex; align-items:center; justify-content:center;
+    background: linear-gradient(to top, rgba(0,0,0,.5), rgba(0,0,0,0));
+  }
+  #captureBtn{
+    width:74px; height:74px; border-radius:999px;
+    background: var(--accent);
+    border:5px solid rgba(255,255,255,.85);
+    box-shadow: 0 6px 20px rgba(0,0,0,.4);
+    cursor:pointer;
+  }
+  #captureBtn:active{ transform: scale(.95); }
+
+  #hint{
+    position:absolute; left:0; right:0; z-index:15;
+    bottom: calc(190px + env(safe-area-inset-bottom));
+    text-align:center; font-size:12.5px; color: var(--ink-dim);
+    pointer-events:none;
+    text-shadow: 0 1px 4px rgba(0,0,0,.6);
+  }
+
+  /* ---------- Result overlay ---------- */
+  #result{
+    position:absolute; inset:0; z-index:40;
+    background: var(--bg);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:16px; padding:20px;
+  }
+  #result.hidden{ display:none; }
+  #resultImg{ max-width:100%; max-height:68vh; border-radius:12px; box-shadow:0 12px 40px rgba(0,0,0,.5); }
+  #result .row{ display:flex; gap:12px; }
+  .pill{
+    border:none; cursor:pointer; font-family:"Baloo 2",sans-serif;
+    font-weight:700; font-size:15px; padding:12px 22px; border-radius:999px;
+  }
+  .pill.primary{ background: var(--accent); color: var(--accent-ink); }
+  .pill.ghost{ background: var(--panel-solid); color: var(--ink); border:1px solid var(--hairline); }
+  #result p{ color:var(--ink-dim); font-size:12.5px; margin:0; }
+
+  input[type=file]{ display:none; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="gate">
+    <div class="emoji">🪄</div>
+    <h1 class="display-font">角色相機</h1>
+    <p>打開相機，把喜歡的角色貼在畫面上，調整位置跟大小後直接拍照。角色資料只存在這個裝置，不會上傳到任何地方。</p>
+    <button id="startBtn">開啟相機</button>
+    <div class="err" id="gateErr"></div>
+  </div>
+
+  <div id="stage">
+    <video id="camera" autoplay playsinline muted></video>
+    <div id="stickerLayer"></div>
+  </div>
+
+  <div id="topBar">
+    <div class="left">
+      <div class="iconbtn" id="flipBtn" title="切換鏡頭">🔄</div>
+    </div>
+    <div class="right">
+      <div class="iconbtn" id="clearBtn" title="清空角色">🗑️</div>
+    </div>
+  </div>
+
+  <div id="hint">點角色加入畫面・拖曳移動・拉右下角縮放</div>
+
+  <div id="trayWrap">
+    <div id="tray"></div>
+  </div>
+
+  <div id="bottomBar">
+    <div id="captureBtn"></div>
+  </div>
+
+  <div id="result" class="hidden">
+    <img id="resultImg" alt="拍攝結果">
+    <div class="row">
+      <button class="pill ghost" id="retakeBtn">重新拍攝</button>
+      <a class="pill primary" id="saveBtn" download="ar-photo.png">儲存照片</a>
+    </div>
+    <p>若下載沒有反應，長按圖片選擇「儲存圖片」即可</p>
+  </div>
+
+  <input type="file" id="fileInput" accept="image/*">
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- Preset character (user's own hand-made photo prop, background removed) ----------
+  var PRESETS = [
+    { name:"我的吉祥物", src:"character.png" }
+  ];
+
+  var STAGE_MIN = 46, STAGE_MAX_RATIO = 1.6;
+  var LS_KEY = "ar_sticker_camera_custom_v1";
+
+  var stage = document.getElementById('stage');
+  var video = document.getElementById('camera');
+  var stickerLayer = document.getElementById('stickerLayer');
+  var tray = document.getElementById('tray');
+  var fileInput = document.getElementById('fileInput');
+  var gate = document.getElementById('gate');
+  var gateErr = document.getElementById('gateErr');
+  var startBtn = document.getElementById('startBtn');
+  var flipBtn = document.getElementById('flipBtn');
+  var clearBtn = document.getElementById('clearBtn');
+  var captureBtn = document.getElementById('captureBtn');
+  var resultBox = document.getElementById('result');
+  var resultImg = document.getElementById('resultImg');
+  var saveBtn = document.getElementById('saveBtn');
+  var retakeBtn = document.getElementById('retakeBtn');
+
+  var currentStream = null;
+  var facing = "environment";
+  var stickers = []; // {id, el, x, y, size}
+  var idSeq = 1;
+
+  function svgToDataUrl(svg){
+    return "data:image/svg+xml;utf8," + encodeURIComponent(svg);
+  }
+
+  // ---------- Tray build ----------
+  function addTrayItem(src){
+    var b = document.createElement('div');
+    b.className = 'traybtn';
+    var img = document.createElement('img');
+    img.src = src;
+    b.appendChild(img);
+    b.addEventListener('click', function(){ placeSticker(src); });
+    tray.appendChild(b);
+  }
+  function buildTray(){
+    tray.innerHTML = '';
+    PRESETS.forEach(function(p){ addTrayItem(p.src); });
+    loadCustom().forEach(function(src){ addTrayItem(src); });
+    var addBtn = document.createElement('div');
+    addBtn.className = 'traybtn add';
+    addBtn.textContent = '＋';
+    addBtn.addEventListener('click', function(){ fileInput.click(); });
+    tray.appendChild(addBtn);
+  }
+  function loadCustom(){
+    try{
+      var raw = localStorage.getItem(LS_KEY);
+      return raw ? JSON.parse(raw) : [];
+    }catch(e){ return []; }
+  }
+  function saveCustom(list){
+    try{ localStorage.setItem(LS_KEY, JSON.stringify(list)); }catch(e){}
+  }
+  fileInput.addEventListener('change', function(){
+    var f = fileInput.files && fileInput.files[0];
+    if(!f) return;
+    var reader = new FileReader();
+    reader.onload = function(){
+      var dataUrl = reader.result;
+      var list = loadCustom();
+      list.push(dataUrl);
+      if(list.length > 12) list = list.slice(list.length - 12);
+      saveCustom(list);
+      buildTray();
+      placeSticker(dataUrl);
+    };
+    reader.readAsDataURL(f);
+    fileInput.value = '';
+  });
+
+  // ---------- Sticker placement & interaction ----------
+  function deselectAll(){
+    stickers.forEach(function(s){ s.el.classList.remove('selected'); });
+  }
+  function select(s){
+    deselectAll();
+    s.el.classList.add('selected');
+    stickerLayer.appendChild(s.el); // bring to front
+  }
+  function applyTransform(s){
+    s.el.style.width = s.size + 'px';
+    s.el.style.height = s.size + 'px';
+    s.el.style.transform = 'translate(' + (s.x - s.size/2) + 'px,' + (s.y - s.size/2) + 'px)';
+  }
+  function placeSticker(src){
+    var rect = stage.getBoundingClientRect();
+    var size = Math.min(rect.width, rect.height) * 0.34;
+    var s = {
+      id: idSeq++, src: src,
+      x: rect.width/2, y: rect.height/2,
+      size: size
+    };
+    var el = document.createElement('div');
+    el.className = 'sticker';
+    var img = document.createElement('img');
+    img.src = src;
+    var ring = document.createElement('div'); ring.className = 'ring';
+    var del = document.createElement('div'); del.className = 'handle handle-delete'; del.textContent = '✕';
+    var rs = document.createElement('div'); rs.className = 'handle handle-resize'; rs.textContent = '⤡';
+    el.appendChild(img); el.appendChild(ring); el.appendChild(del); el.appendChild(rs);
+    stickerLayer.appendChild(el);
+    s.el = el;
+    applyTransform(s);
+    stickers.push(s);
+    select(s);
+    bindStickerEvents(s, del, rs);
+  }
+
+  function bindStickerEvents(s, delHandle, resizeHandle){
+    var dragging = null;
+
+    s.el.addEventListener('pointerdown', function(ev){
+      if(ev.target === delHandle || ev.target === resizeHandle) return;
+      select(s);
+      dragging = { startX: ev.clientX, startY: ev.clientY, ox: s.x, oy: s.y };
+      s.el.setPointerCapture(ev.pointerId);
+      ev.stopPropagation();
+    });
+    s.el.addEventListener('pointermove', function(ev){
+      if(!dragging) return;
+      s.x = dragging.ox + (ev.clientX - dragging.startX);
+      s.y = dragging.oy + (ev.clientY - dragging.startY);
+      applyTransform(s);
+    });
+    s.el.addEventListener('pointerup', function(){ dragging = null; });
+    s.el.addEventListener('pointercancel', function(){ dragging = null; });
+
+    var resizing = null;
+    resizeHandle.addEventListener('pointerdown', function(ev){
+      select(s);
+      var d0 = Math.hypot(ev.clientX - s.x - stage.getBoundingClientRect().left, ev.clientY - s.y - stage.getBoundingClientRect().top);
+      resizing = { startDist: Math.max(d0, 10), startSize: s.size };
+      resizeHandle.setPointerCapture(ev.pointerId);
+      ev.stopPropagation();
+    });
+    resizeHandle.addEventListener('pointermove', function(ev){
+      if(!resizing) return;
+      var rect = stage.getBoundingClientRect();
+      var dist = Math.hypot(ev.clientX - rect.left - s.x, ev.clientY - rect.top - s.y);
+      var maxSize = Math.min(rect.width, rect.height) * STAGE_MAX_RATIO;
+      var newSize = resizing.startSize * (dist / resizing.startDist);
+      s.size = Math.max(STAGE_MIN, Math.min(maxSize, newSize));
+      applyTransform(s);
+      ev.stopPropagation();
+    });
+    resizeHandle.addEventListener('pointerup', function(ev){ resizing = null; ev.stopPropagation(); });
+    resizeHandle.addEventListener('pointercancel', function(ev){ resizing = null; ev.stopPropagation(); });
+
+    delHandle.addEventListener('pointerdown', function(ev){ ev.stopPropagation(); });
+    delHandle.addEventListener('click', function(ev){
+      ev.stopPropagation();
+      stickers = stickers.filter(function(x){ return x.id !== s.id; });
+      s.el.remove();
+    });
+  }
+
+  stage.addEventListener('pointerdown', function(ev){
+    if(ev.target === stage || ev.target === video || ev.target === stickerLayer){
+      deselectAll();
+    }
+  });
+
+  clearBtn.addEventListener('click', function(){
+    stickers.forEach(function(s){ s.el.remove(); });
+    stickers = [];
+  });
+
+  // ---------- Camera ----------
+  function stopStream(){
+    if(currentStream){
+      currentStream.getTracks().forEach(function(t){ t.stop(); });
+      currentStream = null;
+    }
+  }
+  function startCamera(){
+    stopStream();
+    var constraints = { audio:false, video:{ facingMode: facing, width:{ideal:1280}, height:{ideal:1280} } };
+    return navigator.mediaDevices.getUserMedia(constraints).then(function(stream){
+      currentStream = stream;
+      video.srcObject = stream;
+      return video.play();
+    });
+  }
+
+  startBtn.addEventListener('click', function(){
+    gateErr.textContent = '';
+    startBtn.textContent = '開啟中…';
+    startCamera().then(function(){
+      gate.classList.add('hidden');
+      if(stickers.length === 0 && PRESETS.length){
+        placeSticker(PRESETS[0].src);
+      }
+    }).catch(function(err){
+      startBtn.textContent = '開啟相機';
+      gateErr.textContent = '無法開啟相機（' + (err && err.name ? err.name : '未知錯誤') + '），請確認已允許相機權限。';
+    });
+  });
+
+  flipBtn.addEventListener('click', function(){
+    facing = (facing === 'environment') ? 'user' : 'environment';
+    startCamera().catch(function(err){
+      gateErr.textContent = '';
+      alertOnce('無法切換鏡頭：' + (err && err.name ? err.name : '未知錯誤'));
+    });
+  });
+
+  function alertOnce(msg){
+    var d = document.getElementById('hint');
+    var old = d.textContent;
+    d.textContent = msg;
+    setTimeout(function(){ d.textContent = old; }, 2200);
+  }
+
+  // ---------- Capture ----------
+  captureBtn.addEventListener('click', function(){
+    var vw = video.videoWidth, vh = video.videoHeight;
+    if(!vw || !vh) return;
+    var rect = stage.getBoundingClientRect();
+    var scale = Math.max(rect.width / vw, rect.height / vh);
+    var offX = (rect.width - vw*scale) / 2;
+    var offY = (rect.height - vh*scale) / 2;
+
+    var canvas = document.createElement('canvas');
+    canvas.width = vw; canvas.height = vh;
+    var ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, vw, vh);
+
+    var order = Array.from(stickerLayer.children).map(function(el){
+      return stickers.find(function(s){ return s.el === el; });
+    }).filter(Boolean);
+
+    function drawOne(i){
+      if(i >= order.length){ finish(); return; }
+      var s = order[i];
+      var vx = (s.x - offX) / scale;
+      var vy = (s.y - offY) / scale;
+      var vsize = s.size / scale;
+      var img = new Image();
+      img.onload = function(){
+        ctx.drawImage(img, vx - vsize/2, vy - vsize/2, vsize, vsize);
+        drawOne(i+1);
+      };
+      img.onerror = function(){ drawOne(i+1); };
+      img.src = s.src;
+    }
+    function finish(){
+      var dataUrl = canvas.toDataURL('image/png');
+      resultImg.src = dataUrl;
+      saveBtn.href = dataUrl;
+      resultBox.classList.remove('hidden');
+    }
+    drawOne(0);
+  });
+
+  retakeBtn.addEventListener('click', function(){
+    resultBox.classList.add('hidden');
+  });
+
+  buildTray();
+})();
+</script>
+</body>
+</html>
